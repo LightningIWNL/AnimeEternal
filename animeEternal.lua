@@ -1,7 +1,7 @@
 -- UI Library
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
 local SaveManager = loadstring(game:HttpGet(
-"https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"))()
+    "https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"))()
 
 
 --Variable
@@ -23,15 +23,23 @@ local Events = ReplicatedStorage:WaitForChild("Events")
 local Inventory = Events:WaitForChild("Inventory")
 local To_Server = Events:WaitForChild("To_Server")
 local selectedList = {}
+local selectedStarList = {}
+local selectedAmount
 local autofarm = false
 local autoRankUp = false
+local randomStar = false
 local inDungeon = false
 local Dungeon_Notification = PlayerGui.Dungeon.Dungeon_Notification
 local Dungeon_Header = PlayerGui.Dungeon.Default_Header
 local autoFarmAll = false
 local Monsters = workspace:WaitForChild("Debris"):WaitForChild("Monsters")
 local entitiesName, seen = {}, {}
-local currentMonsters = {}
+
+
+-------------------------------------------------------------------------------------------
+-----------------------------------------Function------------------------------------------
+-------------------------------------------------------------------------------------------
+---
 for _, Entity in pairs(workspace.Debris.Monsters:GetChildren()) do
     local title = Entity:GetAttribute("Title")
     if title and not seen[title] then
@@ -39,52 +47,19 @@ for _, Entity in pairs(workspace.Debris.Monsters:GetChildren()) do
         seen[title] = true
     end
 end
-
-
-local statName = {
-    "Primary_Damage",
-    "Primary_Energy",
-    "Primary_Coins",
-    "Primary_Luck",
-}
-
-
-
--------------------------------------------------------------------------------------------
------------------------------------------Function------------------------------------------
--------------------------------------------------------------------------------------------
-
-function Collection:selectAutoFarm()
-    if not autofarm then
-        return
-    end
-    if autofarm then
-        task.spawn(function()
-            while autofarm do
-                if #selectedList > 0 then
-                    local closest = Collection:getEntities(selectedList)
-                    if closest then
-                        if Collection:GetSelfDistance(closest.HumanoidRootPart.Position) > 7 then
-                            Collection:TeleportCFrame(
-                                closest.HumanoidRootPart.CFrame
-                                * CFrame.new(0, 0, -5)
-                                * CFrame.Angles(0, math.rad(180), 0)
-                            )
-                        end
-                        Collection:attackEntity(tostring(closest))
-                    end
-                end
-                task.wait()
+function Collection:randomChampions()
+    task.spawn(function()
+        while randomStar do
+            for _, star in pairs(selectedStarList) do
+                To_Server:FireServer({
+                    Open_Amount = selectedAmount,
+                    Action = "_Stars",
+                    Name = star
+                })
             end
-        end)
-    end
-end
-
-local function stopSelectEntities(reason)
-    if autofarm then
-        autofarm = false
-        print("[SelectEntities] stopped:", reason or "unknown")
-    end
+            task.wait()
+        end
+    end)
 end
 
 function Collection:AutoClaimChest()
@@ -173,7 +148,7 @@ function Collection:autoFarmAll()
             if closestEntity then
                 if Collection:GetSelfDistance(closestEntity["HumanoidRootPart"].Position) > 7 and Collection:GetSelfDistance(closestEntity["HumanoidRootPart"].Position) < 500 then
                     Collection:TeleportCFrame(closestEntity["HumanoidRootPart"].CFrame * CFrame.new(0, 0, -5) *
-                    CFrame.Angles(0, math.rad(180), 0))
+                        CFrame.Angles(0, math.rad(180), 0))
                 end
                 Collection:attackEntity(tostring(closestEntity))
             end
@@ -197,15 +172,73 @@ function Collection:updateEntitiesName()
     return newEntitiesName
 end
 
+function Collection:selectAutoFarm()
+    if not autofarm then
+        return
+    end
+    if autofarm then
+        task.spawn(function()
+            while autofarm do
+                -- if #selectedList > 0 then
+                local closest = Collection:getEntities(selectedList)
+                if closest then
+                    if Collection:GetSelfDistance(closest.HumanoidRootPart.Position) > 7 and Collection:GetSelfDistance(closest.HumanoidRootPart.Position) < 3000 then
+                        Collection:TeleportCFrame(
+                            closest.HumanoidRootPart.CFrame
+                            * CFrame.new(0, 0, -5)
+                            * CFrame.Angles(0, math.rad(180), 0)
+                        )
+                    end
+                    Collection:attackEntity(tostring(closest))
+                end
+                -- end
+                task.wait()
+            end
+        end)
+    end
+end
+
+local function stopSelectEntities(reason)
+    if autofarm then
+        autofarm = false
+        print("[SelectEntities] stopped:", reason or "unknown")
+    end
+end
+
+------------------------------------------------------------------------------------------------
+-----------------------------------------Config Table-------------------------------------------
+------------------------------------------------------------------------------------------------
+
+local DUNGEON_CONFIG = {
+    { name = "Dungeon_Easy",      minuteStart = 0,  minuteEnd = 2 },
+    { name = "Dungeon_Medium",    minuteStart = 10, minuteEnd = 12 },
+    { name = "Dungeon_Hard",      minuteStart = 20, minuteEnd = 22 },
+    { name = "Dungeon_Insane",    minuteStart = 30, minuteEnd = 32 },
+    { name = "Dungeon_Crazy",     minuteStart = 40, minuteEnd = 42 },
+    { name = "Dungeon_Nightmare", minuteStart = 50, minuteEnd = 52 }
+}
+
+local statName = {
+    "Primary_Damage",
+    "Primary_Energy",
+    "Primary_Coins",
+    "Primary_Luck",
+}
+
+local StarName = {
+    "Star_1", "Star_2", "Star_3", "Star_4", "Star_5", "Star_6", "Star_7", "Star_8", "Star_9", "Star_10", "Star_11",
+    "Star_12", "Star_13", "Star_14", "Star_15", "Star_16", "Star_17", "Star_18", "Star_19", "Star_20", "Star_21",
+    "Star_22", "Star_23", "Star_24", "Star_25",
+}
 --------------------------------------------------------------------------------------------
------------------------------------------UI Setup------------------------------------------
+-----------------------------------------UI Setup-------------------------------------------
 --------------------------------------------------------------------------------------------
 ScreenGui.Parent = CoreGui
 ScreenGui.Name = "FleXiZ"
 ImageButton.Size = UDim2.fromOffset(128, 128)
-ImageButton.Position = UDim2.new(0.5, -ImageButton.Size.X.Offset / 2, 0, 10) -- มุมขวาล่าง
-ImageButton.BackgroundTransparency = 1                                     -- โปร่งใส ไม่มีพื้นหลัง
-ImageButton.Image = "rbxassetid://136992027589423"                         -- ใส่ ID รูปที่อยากใช้
+ImageButton.Position = UDim2.new(0.5, -ImageButton.Size.X.Offset / 2, 0, 10)
+ImageButton.BackgroundTransparency = 1
+ImageButton.Image = "rbxassetid://136992027589423"
 ImageButton.ImageColor3 = Color3.fromRGB(255, 255, 255)
 ImageButton.Parent = ScreenGui
 
@@ -253,6 +286,7 @@ end)
 
 local Tabs = {
     General = Window:AddTab({ Title = "General", Icon = "monitor" }),
+    Champions = Window:AddTab({ Title = "Champions", Icon = "user" }),
     Dungeon = Window:AddTab({ Title = "Dungeon", Icon = "shield" }),
     Stats = Window:AddTab({ Title = "Stats", Icon = "align-end-horizontal" }),
     Reward = Window:AddTab({ Title = "Reward", Icon = "trophy" }),
@@ -324,7 +358,6 @@ MultiDropdown:OnChanged(function(select)
     autofarm = true
     Collection:selectAutoFarm()
 end)
-
 task.spawn(function()
     while task.wait(2) do
         local oldCount = #entitiesName
@@ -337,114 +370,111 @@ task.spawn(function()
     end
 end)
 
+
+
 --------------------------------------------------------------------------------------------
 -----------------------------------------Dungeon Tab-----------------------------------------
 --------------------------------------------------------------------------------------------
-local DungeonName = {
-    "Dungeon_Easy",
-    "Dungeon_Medium",
-    "Dungeon_Hard",
-    "Dungeon_Insane",
-    "Dungeon_Crazy",
-    "Dungeon_Nightmare",
-}
 
-function Collection:joinDungeon(dungeonName)
+
+
+
+-- State
+local dungeonList = {}
+local autoDungeon = false
+local inDungeon = false
+
+-- Helper Functions
+local function getDungeonNames()
+    local names = {}
+    for _, config in ipairs(DUNGEON_CONFIG) do
+        table.insert(names, config.name)
+    end
+    return names
+end
+
+local function joinDungeon(dungeonName)
     To_Server:FireServer({
         Action = "_Enter_Dungeon",
         Name = dungeonName
     })
 end
 
+local function enterDungeon(dungeonName)
+    Dungeon_Notification.Visible = false
+    joinDungeon(dungeonName)
+    inDungeon = true
+    stopSelectEntities("entering dungeon: " .. dungeonName)
+    task.wait(0.5)
+    autoFarmAll = true
+    Collection:autoFarmAll()
+end
+
+local function exitDungeon()
+    inDungeon = false
+    autofarm = true
+    autoFarmAll = false
+    Collection:selectAutoFarm()
+end
+
+local function shouldJoinDungeon(minute, dungeonName)
+    for _, config in ipairs(DUNGEON_CONFIG) do
+        if config.name == dungeonName and
+            minute >= config.minuteStart and
+            minute <= config.minuteEnd then
+            return true
+        end
+    end
+    return false
+end
+
+local function checkAndJoinDungeons()
+    if not Dungeon_Notification.Visible then
+        if inDungeon and not Dungeon_Header.Visible then
+            exitDungeon()
+        end
+        return
+    end
+
+    local currentMinute = tonumber(os.date("%M"))
+
+    for _, dungeonName in ipairs(dungeonList) do
+        if shouldJoinDungeon(currentMinute, dungeonName) then
+            enterDungeon(dungeonName)
+            break
+        end
+    end
+end
+
+local function startAutoDungeon()
+    if autoDungeon then return end
+
+    autoDungeon = true
+    task.spawn(function()
+        while autoDungeon do
+            checkAndJoinDungeons()
+            task.wait(.5)
+        end
+    end)
+end
+
 local MultiDropdown = Tabs.Dungeon:AddDropdown("MultiDropdown", {
     Title = "Select Dungeons",
-    Values = DungeonName,
+    Values = getDungeonNames(),
     Multi = true,
     Default = {},
-    Description = "This Function will attack selected entities automatically"
+    Description = "This function will join selected dungeons automatically"
 })
 
-
-local dungeonList = {}
-local autoDungeon = false
-MultiDropdown:OnChanged(function(select)
+MultiDropdown:OnChanged(function(selection)
     dungeonList = {}
-    for i, v in pairs(select) do
-        if v then
-            table.insert(dungeonList, i)
+    for dungeonName, isSelected in pairs(selection) do
+        if isSelected then
+            table.insert(dungeonList, dungeonName)
         end
     end
 
-    if not autoDungeon then
-        autoDungeon = true
-        task.spawn(function()
-            while autoDungeon do
-                if Dungeon_Notification.Visible then
-                    local m = tonumber(os.date("%M"))
-                    local s = tonumber(os.date("%S"))
-                    for _, dungeon in pairs(dungeonList) do
-                        if (m == 00 and s == 20) and dungeon == "Dungeon_Easy" then
-                            Dungeon_Notification.Visible = false
-                            Collection:joinDungeon(dungeon)
-                            inDungeon = true
-                            stopSelectEntities("entering dungeon: " .. tostring(dungeon))
-                            task.wait(.5)
-                            autoFarmAll = true
-                            Collection:autoFarmAll()
-                        elseif (m == 10 and s == 20) and dungeon == "Dungeon_Medium" then
-                            Dungeon_Notification.Visible = false
-                            Collection:joinDungeon(dungeon)
-                            inDungeon = true
-                            stopSelectEntities("entering dungeon: " .. tostring(dungeon))
-                            task.wait(.5)
-                            autoFarmAll = true
-                            Collection:autoFarmAll()
-                        elseif (m == 20 and s == 20) and dungeon == "Dungeon_Hard" then
-                            Dungeon_Notification.Visible = false
-                            Collection:joinDungeon(dungeon)
-                            inDungeon = true
-                            stopSelectEntities("entering dungeon: " .. tostring(dungeon))
-                            task.wait(.5)
-                            autoFarmAll = true
-                            Collection:autoFarmAll()
-                        elseif (m == 30 and s == 20) and dungeon == "Dungeon_Insane" then
-                            Dungeon_Notification.Visible = false
-                            Collection:joinDungeon(dungeon)
-                            inDungeon = true
-                            stopSelectEntities("entering dungeon: " .. tostring(dungeon))
-                            task.wait(.5)
-                            autoFarmAll = true
-                            Collection:autoFarmAll()
-                        elseif (m == 40 and s == 20) and dungeon == "Dungeon_Crazy" then
-                            Dungeon_Notification.Visible = false
-                            Collection:joinDungeon(dungeon)
-                            inDungeon = true
-                            stopSelectEntities("entering dungeon: " .. tostring(dungeon))
-                            task.wait(.5)
-                            autoFarmAll = true
-                            Collection:autoFarmAll()
-                        elseif (m == 50 and s == 20) and dungeon == "Dungeon_Nightmare" then
-                            Dungeon_Notification.Visible = false
-                            Collection:joinDungeon(dungeon)
-                            inDungeon = true
-                            stopSelectEntities("entering dungeon: " .. tostring(dungeon))
-                            task.wait(.5)
-                            autoFarmAll = true
-                            Collection:autoFarmAll()
-                        end
-                    end
-                else
-                    if inDungeon and not Dungeon_Header.Visible then
-                        inDungeon = false
-                        autofarm = true
-                        autoFarmAll = false
-                        Collection:selectAutoFarm()
-                    end
-                end
-                task.wait()
-            end
-        end)
-    end
+    startAutoDungeon()
 end)
 -------------------------------------------------------------------------------------------
 -----------------------------------------Stats Tab-----------------------------------------
@@ -520,5 +550,65 @@ ChestToggle("VipChestToggle", "Claim VIP Chest", "Vip")
 ChestToggle("PremiumChestToggle", "Claim Premium Chest", "Premium")
 
 --------------------------------------------------------------------------------------------
------------------------------------------Loops----------------------------------------------
+-----------------------------------------Champions Tab-----------------------------------------
 --------------------------------------------------------------------------------------------
+-- State
+local selectedStarList = {}
+local selectedAmount = 5
+local randomStar = false
+
+-- Helper Functions
+local function openStars(starName, amount)
+    To_Server:FireServer({
+        Open_Amount = amount,
+        Action = "_Stars",
+        Name = starName
+    })
+end
+
+local function RandomChampions()
+    randomStar = true
+    task.spawn(function()
+        while randomStar do
+            for _, star in ipairs(selectedStarList) do
+                openStars(star, selectedAmount)
+            end
+            task.wait()
+        end
+    end)
+end
+
+
+
+-- UI Setup
+local MultiDropdown = Tabs.Champions:AddDropdown("MultiDropdown", {
+    Title = "Select Stars",
+    Values = StarName,
+    Multi = true, -- เปลี่ยนเป็น true ถ้าต้องการเลือกได้หลายอัน
+    Default = {},
+    Description = "This function will open selected star champions automatically"
+})
+
+MultiDropdown:OnChanged(function(selection)
+    selectedStarList = {}
+
+    for starName, isSelected in pairs(selection) do
+        if isSelected then
+            table.insert(selectedStarList, starName)
+        end
+    end
+    RandomChampions()
+end)
+
+local Slider = Tabs.Champions:AddSlider("Slider", {
+    Title = "Amount",
+    Description = "Number of stars to open at once",
+    Default = 5,
+    Min = 1,
+    Max = 20,
+    Rounding = 1,
+})
+
+Slider:OnChanged(function(amount)
+    selectedAmount = amount
+end)
