@@ -2,6 +2,8 @@
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
 local SaveManager = loadstring(game:HttpGet(
     "https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"))()
+local InterfaceManager = loadstring(game:HttpGet(
+    "https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/InterfaceManager.lua"))()
 
 
 --Variable
@@ -43,6 +45,8 @@ local selectedWave = 1000
 local selectedRoom = 50
 local ExitAtWaveRaid = false
 local ExitAtRoomDungeon = false
+local autoExitDungeon = false
+local autoExitRaid = false
 -------------------------------------------------------------------------------------------
 -----------------------------------------Function------------------------------------------
 -------------------------------------------------------------------------------------------
@@ -55,6 +59,11 @@ end
 function Collection:RaidTitle()
     local txt = Dungeon_Header.Main.Main.Title.Text
     return Dungeon_Header.Visible and txt:find("Raid") ~= nil
+end
+
+function Collection:Graveyard_DefenseTitle()
+    local txt = Dungeon_Header.Main.Main.Title.Text
+    return Dungeon_Header.Visible and txt:find("Graveyard Defense") ~= nil
 end
 
 for _, Entity in pairs(workspace.Debris.Monsters:GetChildren()) do
@@ -167,7 +176,7 @@ function Collection:autoFarmRaid()
         while autoFarmRaidIsOn do
             local allTitles = Collection:getAllEntities()
             local closestEntity, allEntities = Collection:getEntities(allTitles)
-            if closestEntity and Dungeon_Header.Visible and Collection:RaidTitle() then
+            if closestEntity and Dungeon_Header.Visible and (Collection:RaidTitle() or Collection:Graveyard_DefenseTitle()) then
                 if Collection:GetSelfDistance(closestEntity["HumanoidRootPart"].Position) > 7 and Collection:GetSelfDistance(closestEntity["HumanoidRootPart"].Position) < 500 then
                     Collection:TeleportCFrame(closestEntity["HumanoidRootPart"].CFrame * CFrame.new(0, 0, -5) *
                         CFrame.Angles(0, math.rad(180), 0))
@@ -183,9 +192,9 @@ function Collection:GetExitAtRoom()
     ExitAtRoomDungeon = true
     task.spawn(function()
         while ExitAtRoomDungeon do
-            local DungeonWave = Dungeon_Header.Main.Main.Wave.Text
+            local DungeonWave = Dungeon_Header.Main.Main.Room.Text
             local currentWave = DungeonWave:match("%d+")
-            if Collection:DungeonTitle() and currentWave and tonumber(currentWave) >= selectedRoom then
+            if Collection:DungeonTitle() and currentWave and tonumber(currentWave) >= tonumber(selectedRoom) then
                 To_Server:FireServer({
                     Action = "Dungeon_Leave"
                 })
@@ -201,7 +210,7 @@ function Collection:GetExitAtWaveRaid()
         while ExitAtWaveRaid do
             local DungeonWave = Dungeon_Header.Main.Main.Wave.Text
             local currentWave = DungeonWave:match("%d+")
-            if Collection:RaidTitle() and currentWave and tonumber(currentWave) >= selectedWave then
+            if (Collection:RaidTitle() or Collection:Graveyard_DefenseTitle()) and currentWave and tonumber(currentWave) >= tonumber(selectedWave) then
                 To_Server:FireServer({
                     Action = "Dungeon_Leave"
                 })
@@ -291,6 +300,8 @@ local Raid_Config = {
     { name = "Tomb_Arena_Raid",          minuteStart = 0,  minuteEnd = 60 },
     { name = "Total_Running_Track_Raid", minuteStart = 0,  minuteEnd = 60 },
     { name = "Tournament_Raid",          minuteStart = 0,  minuteEnd = 60 },
+    { name = "Graveyard_Defense",        minuteStart = 0,  minuteEnd = 60 },
+
 }
 
 local statName = {
@@ -323,7 +334,7 @@ local Window = Fluent:CreateWindow({
     TabWidth = 160,
     Size = UDim2.fromOffset(580, 460),
     Acrylic = true,
-    Theme = "Dark",
+    Theme = "Aqua",
     MinimizeKey = Enum.KeyCode.LeftControl
 })
 
@@ -387,7 +398,7 @@ end)
 ---------------------------------------------------------------------------------------------
 
 local AntiAFK = false
-local Toggle = Tabs.General:AddToggle("MyToggle", { Title = "Anti AFK", Default = true })
+local Toggle = Tabs.General:AddToggle("MyToggle", { Title = "Anti AFK", Default = false })
 Toggle:OnChanged(function(Toggle)
     AntiAFK = Toggle
     task.spawn(function()
@@ -470,15 +481,14 @@ local function RandomChampions()
     randomStar = true
     task.spawn(function()
         while randomStar do
+            local currentAmount = selectedAmount
             for _, star in ipairs(selectedStarList) do
-                openStars(star, selectedAmount)
+                openStars(star, currentAmount)
             end
             task.wait()
         end
     end)
 end
-
-
 
 
 local MultiDropdown = Tabs.Champions:AddDropdown("MultiDropdown", {
@@ -488,7 +498,6 @@ local MultiDropdown = Tabs.Champions:AddDropdown("MultiDropdown", {
     Default = {},
     Description = "This function will open selected star champions automatically"
 })
-
 MultiDropdown:OnChanged(function(selection)
     selectedStarList = {}
 
@@ -499,19 +508,18 @@ MultiDropdown:OnChanged(function(selection)
     end
     RandomChampions()
 end)
-
 local Slider = Tabs.Champions:AddSlider("Slider", {
     Title = "Amount",
     Description = "Number of stars to open at once",
-    Default = 5,
+    Default = 1,
     Min = 1,
     Max = 20,
     Rounding = 1,
+    Callback = function(Value)
+        selectedAmount = Value
+    end
 })
 
-Slider:OnChanged(function(amount)
-    selectedAmount = amount
-end)
 
 ---------------------------------------------------------------------------------------------
 -----------------------------------------Dungeon Tab-----------------------------------------
@@ -539,7 +547,6 @@ local function enterDungeon(dungeonName)
     inDungeon = true
     stopSelectEntities("entering dungeon: " .. dungeonName)
     autoFarmDungeonIsOn = true
-    Collection:autoFarmDungeon()
 end
 
 local function exitDungeon()
@@ -563,9 +570,13 @@ end
 
 
 local function checkAndJoinDungeons()
-    if inDungeon and not Dungeon_Header.Visible then
-        exitDungeon()
+    if not Dungeon_Notification.Visible then
+        if inDungeon and not Dungeon_Header.Visible then
+            exitDungeon()
+        end
+        return
     end
+
 
     local currentMinute = tonumber(os.date("%M"))
 
@@ -626,10 +637,18 @@ local Slider = Tabs.Dungeon:AddSlider("Select Dungeon Room", {
     Min = 1,
     Max = 50,
     Rounding = 1,
+    Callback = function(Value)
+        selectedRoom = Value
+    end
 })
-Slider:OnChanged(function()
-    selectedRoom = Value
-    Collection:GetExitAtRoom()
+
+local Toggle = Tabs.Dungeon:AddToggle("Select Dungeon Room Exit", { Title = "Auto Exit Dungeon", Default = false })
+
+Toggle:OnChanged(function(Toggle)
+    autoExitDungeon = Toggle
+    if autoExitDungeon then
+        Collection:GetExitAtRoom()
+    end
 end)
 --------------------------------------------------------------------------------------------
 -----------------------------------------Raid Tab-------------------------------------------
@@ -657,7 +676,6 @@ local enterRaid = function(raidName)
     stopSelectEntities("entering raid: " .. raidName)
     task.wait(0.5)
     autoFarmRaidIsOn = true
-    Collection:autoFarmDungeon()
 end
 local exitRaid = function()
     inRaid = false
@@ -735,13 +753,21 @@ local Slider = Tabs.Raid:AddSlider("Slider", {
     Min = 1,
     Max = 1000,
     Rounding = 1,
+    Callback = function(Value)
+        selectedWave = Value
+    end
 })
 
-Slider:OnChanged(function(Value)
-    selectedWave = Value
-    Collection:GetExitAtWaveRaid()
-end)
 
+
+local Toggle = Tabs.Raid:AddToggle("Select Raid Room Exit", { Title = "Auto Exit Raid", Default = false })
+
+Toggle:OnChanged(function(Toggle)
+    autoExitRaid = Toggle
+    if autoExitRaid then
+        Collection:GetExitAtWaveRaid()
+    end
+end)
 -------------------------------------------------------------------------------------------
 -----------------------------------------Stats Tab-----------------------------------------
 -------------------------------------------------------------------------------------------
@@ -790,7 +816,7 @@ end)
 -------------------------------------------------------------------------------------------
 -----------------------------------------Reward Tab-----------------------------------------
 -------------------------------------------------------------------------------------------
-local function ChestToggle(key, title, chestName)
+function Collection:ChestToggle(key, title, chestName)
     local openChest = false
 
     local ToggleObj = Tabs.Reward:AddToggle(key, { Title = title, Default = false })
@@ -810,7 +836,7 @@ local function ChestToggle(key, title, chestName)
     end)
 end
 
-ChestToggle("DailyChestToggle", "Claim Daily Chest", "Daily")
-ChestToggle("GroupChestToggle", "Claim Group Chest", "Group")
-ChestToggle("VipChestToggle", "Claim VIP Chest", "Vip")
-ChestToggle("PremiumChestToggle", "Claim Premium Chest", "Premium")
+Collection:ChestToggle("DailyChestToggle", "Claim Daily Chest", "Daily")
+Collection:ChestToggle("GroupChestToggle", "Claim Group Chest", "Group")
+Collection:ChestToggle("VipChestToggle", "Claim VIP Chest", "Vip")
+Collection:ChestToggle("PremiumChestToggle", "Claim Premium Chest", "Premium")
