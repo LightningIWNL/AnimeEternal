@@ -24,22 +24,39 @@ local Inventory = Events:WaitForChild("Inventory")
 local To_Server = Events:WaitForChild("To_Server")
 local selectedList = {}
 local selectedStarList = {}
-local selectedAmount
 local autofarm = false
 local autoRankUp = false
 local randomStar = false
-local inDungeon = false
 local Dungeon_Notification = PlayerGui.Dungeon.Dungeon_Notification
 local Dungeon_Header = PlayerGui.Dungeon.Default_Header
-local autoFarmAll = false
+local autoFarmDungeonIsOn = false
+local autoFarmRaidIsOn = false
 local Monsters = workspace:WaitForChild("Debris"):WaitForChild("Monsters")
 local entitiesName, seen = {}, {}
-
-
+local dungeonList = {}
+local autoDungeon = false
+local inDungeon = false
+local RaidList = {}
+local autoRaid = false
+local inRaid = false
+local selectedWave = 1000
+local selectedRoom = 50
+local ExitAtWaveRaid = false
+local ExitAtRoomDungeon = false
 -------------------------------------------------------------------------------------------
 -----------------------------------------Function------------------------------------------
 -------------------------------------------------------------------------------------------
----
+
+function Collection:DungeonTitle()
+    local txt = Dungeon_Header.Main.Main.Title.Text
+    return Dungeon_Header.Visible and txt:find("Dungeon") ~= nil
+end
+
+function Collection:RaidTitle()
+    local txt = Dungeon_Header.Main.Main.Title.Text
+    return Dungeon_Header.Visible and txt:find("Raid") ~= nil
+end
+
 for _, Entity in pairs(workspace.Debris.Monsters:GetChildren()) do
     local title = Entity:GetAttribute("Title")
     if title and not seen[title] then
@@ -47,20 +64,7 @@ for _, Entity in pairs(workspace.Debris.Monsters:GetChildren()) do
         seen[title] = true
     end
 end
-function Collection:randomChampions()
-    task.spawn(function()
-        while randomStar do
-            for _, star in pairs(selectedStarList) do
-                To_Server:FireServer({
-                    Open_Amount = selectedAmount,
-                    Action = "_Stars",
-                    Name = star
-                })
-            end
-            task.wait()
-        end
-    end)
-end
+
 
 function Collection:AutoClaimChest()
     To_Server:FireServer({
@@ -139,13 +143,13 @@ function Collection:getAllEntities()
     return EntitiesName
 end
 
-function Collection:autoFarmAll()
-    autoFarmAll = true
-    autoFarmAll = task.spawn(function()
-        while autoFarmAll do
+function Collection:autoFarmDungeon()
+    autoFarmDungeonIsOn = true
+    task.spawn(function()
+        while autoFarmDungeonIsOn do
             local allTitles = Collection:getAllEntities()
             local closestEntity, allEntities = Collection:getEntities(allTitles)
-            if closestEntity then
+            if closestEntity and Collection:DungeonTitle() then
                 if Collection:GetSelfDistance(closestEntity["HumanoidRootPart"].Position) > 7 and Collection:GetSelfDistance(closestEntity["HumanoidRootPart"].Position) < 500 then
                     Collection:TeleportCFrame(closestEntity["HumanoidRootPart"].CFrame * CFrame.new(0, 0, -5) *
                         CFrame.Angles(0, math.rad(180), 0))
@@ -153,6 +157,56 @@ function Collection:autoFarmAll()
                 Collection:attackEntity(tostring(closestEntity))
             end
             task.wait()
+        end
+    end)
+end
+
+function Collection:autoFarmRaid()
+    autoFarmRaidIsOn = true
+    task.spawn(function()
+        while autoFarmRaidIsOn do
+            local allTitles = Collection:getAllEntities()
+            local closestEntity, allEntities = Collection:getEntities(allTitles)
+            if closestEntity and Dungeon_Header.Visible and Collection:RaidTitle() then
+                if Collection:GetSelfDistance(closestEntity["HumanoidRootPart"].Position) > 7 and Collection:GetSelfDistance(closestEntity["HumanoidRootPart"].Position) < 500 then
+                    Collection:TeleportCFrame(closestEntity["HumanoidRootPart"].CFrame * CFrame.new(0, 0, -5) *
+                        CFrame.Angles(0, math.rad(180), 0))
+                end
+                Collection:attackEntity(tostring(closestEntity))
+            end
+            task.wait()
+        end
+    end)
+end
+
+function Collection:GetExitAtRoom()
+    ExitAtRoomDungeon = true
+    task.spawn(function()
+        while ExitAtRoomDungeon do
+            local DungeonWave = Dungeon_Header.Main.Main.Wave.Text
+            local currentWave = DungeonWave:match("%d+")
+            if Collection:DungeonTitle() and currentWave and tonumber(currentWave) >= selectedRoom then
+                To_Server:FireServer({
+                    Action = "Dungeon_Leave"
+                })
+            end
+            task.wait(.5)
+        end
+    end)
+end
+
+function Collection:GetExitAtWaveRaid()
+    ExitAtWaveRaid = true
+    task.spawn(function()
+        while ExitAtWaveRaid do
+            local DungeonWave = Dungeon_Header.Main.Main.Wave.Text
+            local currentWave = DungeonWave:match("%d+")
+            if Collection:RaidTitle() and currentWave and tonumber(currentWave) >= selectedWave then
+                To_Server:FireServer({
+                    Action = "Dungeon_Leave"
+                })
+            end
+            task.wait(.5)
         end
     end)
 end
@@ -205,6 +259,8 @@ local function stopSelectEntities(reason)
     end
 end
 
+
+
 ------------------------------------------------------------------------------------------------
 -----------------------------------------Config Table-------------------------------------------
 ------------------------------------------------------------------------------------------------
@@ -216,6 +272,25 @@ local DUNGEON_CONFIG = {
     { name = "Dungeon_Insane",    minuteStart = 30, minuteEnd = 32 },
     { name = "Dungeon_Crazy",     minuteStart = 40, minuteEnd = 42 },
     { name = "Dungeon_Nightmare", minuteStart = 50, minuteEnd = 52 }
+}
+
+local Raid_Config = {
+    { name = "Cursed_Raid",              minuteStart = 0,  minuteEnd = 60 },
+    { name = "Dragon_Room_Raid",         minuteStart = 0,  minuteEnd = 60 },
+    { name = "Ghoul_Raid",               minuteStart = 0,  minuteEnd = 60 },
+    { name = "Gleam_Raid",               minuteStart = 0,  minuteEnd = 60 },
+    { name = "Green_Planet_Raid",        minuteStart = 0,  minuteEnd = 60 },
+    { name = "Halloween_Raid",           minuteStart = 0,  minuteEnd = 60 },
+    { name = "Hollow_Raid",              minuteStart = 0,  minuteEnd = 60 },
+    { name = "Leaf_Raid",                minuteStart = 15, minuteEnd = 17 },
+    { name = "Mundo_Raid",               minuteStart = 0,  minuteEnd = 60 },
+    { name = "Progression_Raid",         minuteStart = 0,  minuteEnd = 60 },
+    { name = "Progression_Raid_2",       minuteStart = 0,  minuteEnd = 60 },
+    { name = "Restaurant_Raid",          minuteStart = 0,  minuteEnd = 60 },
+    { name = "Sin_Raid",                 minuteStart = 0,  minuteEnd = 60 },
+    { name = "Tomb_Arena_Raid",          minuteStart = 0,  minuteEnd = 60 },
+    { name = "Total_Running_Track_Raid", minuteStart = 0,  minuteEnd = 60 },
+    { name = "Tournament_Raid",          minuteStart = 0,  minuteEnd = 60 },
 }
 
 local statName = {
@@ -288,6 +363,7 @@ local Tabs = {
     General = Window:AddTab({ Title = "General", Icon = "monitor" }),
     Champions = Window:AddTab({ Title = "Champions", Icon = "user" }),
     Dungeon = Window:AddTab({ Title = "Dungeon", Icon = "shield" }),
+    Raid = Window:AddTab({ Title = "Raid", Icon = "flame" }),
     Stats = Window:AddTab({ Title = "Stats", Icon = "align-end-horizontal" }),
     Reward = Window:AddTab({ Title = "Reward", Icon = "trophy" }),
 }
@@ -304,9 +380,11 @@ task.spawn(function()
 end)
 
 
--------------------------------------------------------------------------------------------
+
+
+---------------------------------------------------------------------------------------------
 -----------------------------------------General Tab-----------------------------------------
--------------------------------------------------------------------------------------------
+---------------------------------------------------------------------------------------------
 
 local AntiAFK = false
 local Toggle = Tabs.General:AddToggle("MyToggle", { Title = "Anti AFK", Default = true })
@@ -371,20 +449,75 @@ task.spawn(function()
 end)
 
 
+-----------------------------------------------------------------------------------------------
+-----------------------------------------Champions Tab-----------------------------------------
+-----------------------------------------------------------------------------------------------
 
---------------------------------------------------------------------------------------------
+local selectedStarList = {}
+local selectedAmount = 5
+local randomStar = false
+
+
+local function openStars(starName, amount)
+    To_Server:FireServer({
+        Open_Amount = amount,
+        Action = "_Stars",
+        Name = starName
+    })
+end
+
+local function RandomChampions()
+    randomStar = true
+    task.spawn(function()
+        while randomStar do
+            for _, star in ipairs(selectedStarList) do
+                openStars(star, selectedAmount)
+            end
+            task.wait()
+        end
+    end)
+end
+
+
+
+
+local MultiDropdown = Tabs.Champions:AddDropdown("MultiDropdown", {
+    Title = "Select Stars",
+    Values = StarName,
+    Multi = true,
+    Default = {},
+    Description = "This function will open selected star champions automatically"
+})
+
+MultiDropdown:OnChanged(function(selection)
+    selectedStarList = {}
+
+    for starName, isSelected in pairs(selection) do
+        if isSelected then
+            table.insert(selectedStarList, starName)
+        end
+    end
+    RandomChampions()
+end)
+
+local Slider = Tabs.Champions:AddSlider("Slider", {
+    Title = "Amount",
+    Description = "Number of stars to open at once",
+    Default = 5,
+    Min = 1,
+    Max = 20,
+    Rounding = 1,
+})
+
+Slider:OnChanged(function(amount)
+    selectedAmount = amount
+end)
+
+---------------------------------------------------------------------------------------------
 -----------------------------------------Dungeon Tab-----------------------------------------
---------------------------------------------------------------------------------------------
+---------------------------------------------------------------------------------------------
 
 
-
-
--- State
-local dungeonList = {}
-local autoDungeon = false
-local inDungeon = false
-
--- Helper Functions
 local function getDungeonNames()
     local names = {}
     for _, config in ipairs(DUNGEON_CONFIG) do
@@ -405,15 +538,14 @@ local function enterDungeon(dungeonName)
     joinDungeon(dungeonName)
     inDungeon = true
     stopSelectEntities("entering dungeon: " .. dungeonName)
-    task.wait(0.5)
-    autoFarmAll = true
-    Collection:autoFarmAll()
+    autoFarmDungeonIsOn = true
+    Collection:autoFarmDungeon()
 end
 
 local function exitDungeon()
     inDungeon = false
     autofarm = true
-    autoFarmAll = false
+    autoFarmDungeonIsOn = false
     Collection:selectAutoFarm()
 end
 
@@ -428,27 +560,27 @@ local function shouldJoinDungeon(minute, dungeonName)
     return false
 end
 
+
+
 local function checkAndJoinDungeons()
-    if not Dungeon_Notification.Visible then
-        if inDungeon and not Dungeon_Header.Visible then
-            exitDungeon()
-        end
-        return
+    if inDungeon and not Dungeon_Header.Visible then
+        exitDungeon()
     end
 
     local currentMinute = tonumber(os.date("%M"))
 
     for _, dungeonName in ipairs(dungeonList) do
         if shouldJoinDungeon(currentMinute, dungeonName) then
-            enterDungeon(dungeonName)
-            break
+            if not inRaid and not Dungeon_Header.Visible then
+                enterDungeon(dungeonName)
+                break
+            end
         end
     end
 end
 
 local function startAutoDungeon()
     if autoDungeon then return end
-
     autoDungeon = true
     task.spawn(function()
         while autoDungeon do
@@ -457,6 +589,7 @@ local function startAutoDungeon()
         end
     end)
 end
+
 
 local MultiDropdown = Tabs.Dungeon:AddDropdown("MultiDropdown", {
     Title = "Select Dungeons",
@@ -476,6 +609,139 @@ MultiDropdown:OnChanged(function(selection)
 
     startAutoDungeon()
 end)
+
+local Toggle = Tabs.Dungeon:AddToggle("Auto Farm Dungeon", { Title = "Auto Farm Dungeon", Default = false })
+
+Toggle:OnChanged(function(Toggle)
+    autoFarmDungeonIsOn = Toggle
+    if autoFarmDungeonIsOn then
+        Collection:autoFarmDungeon()
+    end
+end)
+
+local Slider = Tabs.Dungeon:AddSlider("Select Dungeon Room", {
+    Title = "Select Auto Exit Room",
+    Description = "Auto leave at selected room",
+    Default = 50,
+    Min = 1,
+    Max = 50,
+    Rounding = 1,
+})
+Slider:OnChanged(function()
+    selectedRoom = Value
+    Collection:GetExitAtRoom()
+end)
+--------------------------------------------------------------------------------------------
+-----------------------------------------Raid Tab-------------------------------------------
+--------------------------------------------------------------------------------------------
+
+
+local function getRaidNames()
+    local names = {}
+    for _, config in ipairs(Raid_Config) do
+        table.insert(names, config.name)
+    end
+    return names
+end
+
+local joinRaid = function(raidName)
+    To_Server:FireServer({
+        Action = "_Enter_Dungeon",
+        Name = raidName
+    })
+end
+
+local enterRaid = function(raidName)
+    joinRaid(raidName)
+    inRaid = true
+    stopSelectEntities("entering raid: " .. raidName)
+    task.wait(0.5)
+    autoFarmRaidIsOn = true
+    Collection:autoFarmDungeon()
+end
+local exitRaid = function()
+    inRaid = false
+    autofarm = true
+    autoFarmRaidIsOn = false
+    Collection:selectAutoFarm()
+end
+local shouldJoinRaid = function(minute, raidName)
+    for _, config in ipairs(Raid_Config) do
+        if config.name == raidName and
+            minute >= config.minuteStart and
+            minute <= config.minuteEnd then
+            return true
+        end
+    end
+    return false
+end
+local checkAndJoinRaids = function()
+    if inRaid and not Dungeon_Header.Visible then
+        exitRaid()
+    end
+    local currentMinute = tonumber(os.date("%M"))
+
+    for _, raidName in ipairs(RaidList) do
+        if shouldJoinRaid(currentMinute, raidName) then
+            if not inDungeon and not Dungeon_Header.Visible then
+                enterRaid(raidName)
+                break
+            end
+        end
+    end
+end
+local startAutoRaid = function()
+    if autoRaid then return end
+
+    autoRaid = true
+    task.spawn(function()
+        while autoRaid do
+            checkAndJoinRaids()
+            task.wait(.5)
+        end
+    end)
+end
+local MultiDropdown = Tabs.Raid:AddDropdown("MultiDropdown", {
+    Title = "Select Raids",
+    Values = getRaidNames(),
+    Multi = true,
+    Default = {},
+    Description = "This function will join selected raid automatically"
+})
+MultiDropdown:OnChanged(function(selection)
+    RaidList = {}
+    for raidName, isSelected in pairs(selection) do
+        if isSelected then
+            table.insert(RaidList, raidName)
+        end
+    end
+
+    startAutoRaid()
+end)
+
+local Toggle = Tabs.Raid:AddToggle("Auto Farm Raid", { Title = "Auto Farm Raid", Default = false })
+
+Toggle:OnChanged(function(Toggle)
+    autoFarmRaidIsOn = Toggle
+    if autoFarmRaidIsOn then
+        Collection:autoFarmRaid()
+    end
+end)
+
+local Slider = Tabs.Raid:AddSlider("Slider", {
+    Title = "Select Auto Exit Wave",
+    Description = "Auto leave at selected wave",
+    Default = 1000,
+    Min = 1,
+    Max = 1000,
+    Rounding = 1,
+})
+
+Slider:OnChanged(function(Value)
+    selectedWave = Value
+    Collection:GetExitAtWaveRaid()
+end)
+
 -------------------------------------------------------------------------------------------
 -----------------------------------------Stats Tab-----------------------------------------
 -------------------------------------------------------------------------------------------
@@ -525,13 +791,13 @@ end)
 -----------------------------------------Reward Tab-----------------------------------------
 -------------------------------------------------------------------------------------------
 local function ChestToggle(key, title, chestName)
-    local isOn = false
+    local openChest = false
 
     local ToggleObj = Tabs.Reward:AddToggle(key, { Title = title, Default = false })
 
     ToggleObj:OnChanged(function(state)
-        isOn = state
-        if isOn then
+        openChest = state
+        if openChest then
             task.spawn(function()
                 pcall(function()
                     To_Server:FireServer({
@@ -548,67 +814,3 @@ ChestToggle("DailyChestToggle", "Claim Daily Chest", "Daily")
 ChestToggle("GroupChestToggle", "Claim Group Chest", "Group")
 ChestToggle("VipChestToggle", "Claim VIP Chest", "Vip")
 ChestToggle("PremiumChestToggle", "Claim Premium Chest", "Premium")
-
---------------------------------------------------------------------------------------------
------------------------------------------Champions Tab-----------------------------------------
---------------------------------------------------------------------------------------------
--- State
-local selectedStarList = {}
-local selectedAmount = 5
-local randomStar = false
-
--- Helper Functions
-local function openStars(starName, amount)
-    To_Server:FireServer({
-        Open_Amount = amount,
-        Action = "_Stars",
-        Name = starName
-    })
-end
-
-local function RandomChampions()
-    randomStar = true
-    task.spawn(function()
-        while randomStar do
-            for _, star in ipairs(selectedStarList) do
-                openStars(star, selectedAmount)
-            end
-            task.wait()
-        end
-    end)
-end
-
-
-
--- UI Setup
-local MultiDropdown = Tabs.Champions:AddDropdown("MultiDropdown", {
-    Title = "Select Stars",
-    Values = StarName,
-    Multi = true, -- เปลี่ยนเป็น true ถ้าต้องการเลือกได้หลายอัน
-    Default = {},
-    Description = "This function will open selected star champions automatically"
-})
-
-MultiDropdown:OnChanged(function(selection)
-    selectedStarList = {}
-
-    for starName, isSelected in pairs(selection) do
-        if isSelected then
-            table.insert(selectedStarList, starName)
-        end
-    end
-    RandomChampions()
-end)
-
-local Slider = Tabs.Champions:AddSlider("Slider", {
-    Title = "Amount",
-    Description = "Number of stars to open at once",
-    Default = 5,
-    Min = 1,
-    Max = 20,
-    Rounding = 1,
-})
-
-Slider:OnChanged(function(amount)
-    selectedAmount = amount
-end)
