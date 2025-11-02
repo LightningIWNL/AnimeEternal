@@ -15,6 +15,7 @@ local VirtualInputManager = game:GetService("VirtualInputManager")
 local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+local RunService = game:GetService("RunService")
 local CoreGui = game:GetService("CoreGui")
 local ScreenGui = Instance.new("ScreenGui")
 local ImageButton = Instance.new("ImageButton")
@@ -53,11 +54,14 @@ local upgradeStats = false
 local selectedAmountStats = 1
 local selectedStatList = {}
 local refreshEntities = false
+local openChest = false
 local UIR = PlayerGui.Inventory_1.Hub.Equip_All_Top.Main.UI_Ring
 local selectedEquipBest = {}
 local autoEquipBest = false
 local autoEquipBestBTN = false
 local equipBestAllInterval = 30
+local disableRender = false
+local blackScreen = false
 
 -------------------------------------------------------------------------------------------
 -----------------------------------------Function------------------------------------------
@@ -124,6 +128,19 @@ function Collection:AutoClaimChest()
         Action = "_Chest_Claim",
         Name = "Group"
     })
+end
+
+function Collection:ChestToggle(chestName)
+    if openChest then
+        task.spawn(function()
+            pcall(function()
+                To_Server:FireServer({
+                    Action = "_Chest_Claim",
+                    Name = chestName
+                })
+            end)
+        end)
+    end
 end
 
 function Collection:GetRoot(Character)
@@ -227,6 +244,7 @@ function Collection:autoFarmDungeon()
                 end
                 task.wait()
             end
+            task.wait()
         end
     end)
 end
@@ -245,8 +263,8 @@ function Collection:autoFarmRaid()
                     end
                     Collection:attackEntity(tostring(closestEntity))
                 end
-                task.wait()
             end
+            task.wait()
         end
     end)
 end
@@ -327,6 +345,41 @@ function Collection:upgrade_Stats()
                 end
             end
             task.wait(.5)
+        end
+    end)
+end
+
+function Collection:RenderDisable(toggle)
+    if toggle then
+        RunService:Set3dRenderingEnabled(false)
+    else
+        RunService:Set3dRenderingEnabled(true)
+    end
+end
+
+function Collection:ScreenBlack(toggle)
+    task.spawn(function()
+        if toggle then
+            local oldGui = PlayerGui:FindFirstChild("BlackScreen")
+            if oldGui then oldGui:Destroy() end
+
+            local gui = Instance.new("ScreenGui")
+            gui.Name = "BlackScreen"
+            gui.IgnoreGuiInset = true
+            gui.ResetOnSpawn = false
+            gui.DisplayOrder = 999999
+            gui.Parent = PlayerGui
+
+            local frame = Instance.new("Frame")
+            frame.Size = UDim2.new(1, 0, 1, 0)
+            frame.BackgroundColor3 = Color3.new(0, 0, 0)
+            frame.BorderSizePixel = 0
+            frame.Parent = gui
+        else
+            local gui = PlayerGui:FindFirstChild("BlackScreen")
+            if gui then
+                gui:Destroy()
+            end
         end
     end)
 end
@@ -440,10 +493,9 @@ local Tabs = {
     Raid = Window:AddTab({ Title = "Raid", Icon = "flame" }),
     Stats = Window:AddTab({ Title = "Stats", Icon = "align-end-horizontal" }),
     Reward = Window:AddTab({ Title = "Reward", Icon = "trophy" }),
+    Performance = Window:AddTab({ Title = "Performance", Icon = "chevrons-up" }),
+    Settings = Window:AddTab({ Title = "Settings", Icon = "settings" })
 }
-
-
-
 
 task.spawn(function()
     while task.wait(.5) do
@@ -455,9 +507,6 @@ task.spawn(function()
         end
     end
 end)
-
-
-
 
 ---------------------------------------------------------------------------------------------
 -----------------------------------------General Tab-----------------------------------------
@@ -537,7 +586,7 @@ function Collection:AutoEqiupBestAll()
 end
 
 local MultiDropdown = Tabs.General:AddDropdown("MultiDropdown", {
-    Title = "Select Equip Best",
+    Title = "Select Equip Best By",
     Values = Collection:GetEquipBestName(),
     Multi = true,
     Default = {},
@@ -966,27 +1015,70 @@ local Slider = Tabs.Stats:AddSlider("Slider", {
 -------------------------------------------------------------------------------------------
 -----------------------------------------Reward Tab-----------------------------------------
 -------------------------------------------------------------------------------------------
-function Collection:ChestToggle(key, title, chestName)
-    local openChest = false
+local Toggle = Tabs.Reward:AddToggle("Daily Chest", { Title = "Open Daily Chest", Default = false })
 
-    local ToggleObj = Tabs.Reward:AddToggle(key, { Title = title, Default = false })
+Toggle:OnChanged(function(Toggle)
+    openChest = Toggle
+    if openChest then
+        Collection:ChestToggle("Daily")
+    end
+end)
+local Toggle = Tabs.Reward:AddToggle("Group Chest", { Title = "Open Group Chest", Default = false })
 
-    ToggleObj:OnChanged(function(state)
-        openChest = state
-        if openChest then
-            task.spawn(function()
-                pcall(function()
-                    To_Server:FireServer({
-                        Action = "_Chest_Claim",
-                        Name = chestName
-                    })
-                end)
-            end)
-        end
-    end)
-end
+Toggle:OnChanged(function(Toggle)
+    openChest = Toggle
+    if openChest then
+        Collection:ChestToggle("Group")
+    end
+end)
+local Toggle = Tabs.Reward:AddToggle("VIP Chest", { Title = "Open VIP Chest", Default = false })
 
-Collection:ChestToggle("DailyChestToggle", "Claim Daily Chest", "Daily")
-Collection:ChestToggle("GroupChestToggle", "Claim Group Chest", "Group")
-Collection:ChestToggle("VipChestToggle", "Claim VIP Chest", "Vip")
-Collection:ChestToggle("PremiumChestToggle", "Claim Premium Chest", "Premium")
+Toggle:OnChanged(function(Toggle)
+    openChest = Toggle
+    if openChest then
+        Collection:ChestToggle("Vip")
+    end
+end)
+local Toggle = Tabs.Reward:AddToggle("Premium Chest", { Title = "Open Premium Chest", Default = false })
+
+Toggle:OnChanged(function(Toggle)
+    openChest = Toggle
+    if openChest then
+        Collection:ChestToggle("Premium")
+    end
+end)
+---------------------------------------------------------------------------------------------
+-----------------------------------------Performance-----------------------------------------
+---------------------------------------------------------------------------------------------
+local Toggle = Tabs.Performance:AddToggle("Disable Render",
+    { Title = "Disable Render", Default = false, Description =
+    "This function will disable 3D rendering to help improve your performance" })
+
+Toggle:OnChanged(function(Toggle)
+    disableRender = Toggle
+    if disableRender then
+        Collection:RenderDisable(true)
+    else
+        Collection:RenderDisable(false)
+    end
+end)
+local Toggle = Tabs.Performance:AddToggle("Black Screen",
+    { Title = "Black Screen", Default = false, Description = "This function will black screen to save your battery" })
+
+Toggle:OnChanged(function(Toggle)
+    blackScreen = Toggle
+    if blackScreen then
+        Collection:ScreenBlack(true)
+    else
+        Collection:ScreenBlack(false)
+    end
+end)
+
+SaveManager:SetLibrary(Fluent)
+InterfaceManager:SetLibrary(Fluent)
+InterfaceManager:SetFolder("FleXiZHub_Interface")
+SaveManager:SetFolder("FleXiZHub/Anime_Eternal")
+InterfaceManager:BuildInterfaceSection(Tabs.Settings)
+SaveManager:BuildConfigSection(Tabs.Settings)
+Window:SelectTab(1)
+SaveManager:LoadAutoloadConfig()
