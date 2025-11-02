@@ -57,6 +57,7 @@ local UIR = PlayerGui.Inventory_1.Hub.Equip_All_Top.Main.UI_Ring
 local selectedEquipBest = {}
 local autoEquipBest = false
 local autoEquipBestBTN = false
+local equipBestAllInterval = 30
 
 -------------------------------------------------------------------------------------------
 -----------------------------------------Function------------------------------------------
@@ -89,7 +90,6 @@ function Collection:pressButton(btn)
     task.wait(0.05)
     GuiService.SelectedObject = nil
 
-    -- ลบ Frame ชั่วคราวออก
     if VisibleUI and VisibleUI.Parent then
         VisibleUI:Destroy()
     end
@@ -127,16 +127,25 @@ function Collection:AutoClaimChest()
 end
 
 function Collection:GetRoot(Character)
+    if not Character then return nil end
     return Character:FindFirstChild("HumanoidRootPart")
 end
 
 function Collection:GetSelfDistance(Position)
+    if not LocalPlayer.Character then return math.huge end
+
     local RootPart = Collection:GetRoot(LocalPlayer.Character)
+    if not RootPart then return math.huge end
+
     return (RootPart.Position - Position).Magnitude
 end
 
 function Collection:TeleportCFrame(Position)
+    if not LocalPlayer.Character then return end
+
     local RootPart = Collection:GetRoot(LocalPlayer.Character)
+    if not RootPart then return end
+
     RootPart.CFrame = typeof(Position) == "CFrame" and Position or CFrame.new(Position)
 end
 
@@ -152,14 +161,18 @@ function Collection:getEntities(Entities)
     local entitiesData = {}
     local entities = {}
 
-
+    if not LocalPlayer.Character then
+        return nil, nil
+    end
     local RootPart = Collection:GetRoot(LocalPlayer.Character)
-
+    if not RootPart then
+        return nil, nil
+    end
     for _, Entity in pairs(Monsters:GetChildren()) do
-        -- local title = Entity:GetAttribute("Title")
         local entityRoot = Entity:FindFirstChild("HumanoidRootPart")
-        if table.find(Entities, Entity:GetAttribute("Title")) and entityRoot then
-            -- local distance = math.floor((Entity["HumanoidRootPart"].Position - RootPart.Position).Magnitude)
+        local title = Entity:GetAttribute("Title")
+
+        if title and entityRoot and table.find(Entities, title) then
             local distance = math.floor((entityRoot.Position - RootPart.Position).Magnitude)
             table.insert(entities, Entity)
             table.insert(distanceData, distance)
@@ -167,8 +180,9 @@ function Collection:getEntities(Entities)
         end
     end
 
-    if #distanceData <= 0 then return nil, nil end
-
+    if #distanceData <= 0 then
+        return nil, nil
+    end
     return entitiesData[tostring(math.min(unpack(distanceData)))], entities
 end
 
@@ -201,16 +215,18 @@ function Collection:autoFarmDungeon()
     autoFarmDungeonIsOn = true
     task.spawn(function()
         while autoFarmDungeonIsOn do
-            local allTitles = Collection:getAllEntities()
-            local closestEntity, allEntities = Collection:getEntities(allTitles)
-            if closestEntity and Collection:DungeonTitle() then
-                if Collection:GetSelfDistance(closestEntity["HumanoidRootPart"].Position) > 7 and Collection:GetSelfDistance(closestEntity["HumanoidRootPart"].Position) < 500 then
-                    Collection:TeleportCFrame(closestEntity["HumanoidRootPart"].CFrame * CFrame.new(0, 0, -5) *
-                        CFrame.Angles(0, math.rad(180), 0))
+            if LocalPlayer.Character and Collection:DungeonTitle() then
+                local allTitles = Collection:getAllEntities()
+                local closestEntity, allEntities = Collection:getEntities(allTitles)
+                if closestEntity and closestEntity:FindFirstChild("HumanoidRootPart") then
+                    if Collection:GetSelfDistance(closestEntity["HumanoidRootPart"].Position) > 7 and Collection:GetSelfDistance(closestEntity["HumanoidRootPart"].Position) < 500 then
+                        Collection:TeleportCFrame(closestEntity["HumanoidRootPart"].CFrame * CFrame.new(0, 0, -5) *
+                            CFrame.Angles(0, math.rad(180), 0))
+                    end
+                    Collection:attackEntity(tostring(closestEntity))
                 end
-                Collection:attackEntity(tostring(closestEntity))
+                task.wait()
             end
-            task.wait()
         end
     end)
 end
@@ -219,16 +235,18 @@ function Collection:autoFarmRaid()
     autoFarmRaidIsOn = true
     task.spawn(function()
         while autoFarmRaidIsOn do
-            local allTitles = Collection:getAllEntities()
-            local closestEntity, allEntities = Collection:getEntities(allTitles)
-            if closestEntity and Dungeon_Header.Visible and (Collection:RaidTitle() or Collection:DefenseTitle()) then
-                if Collection:GetSelfDistance(closestEntity["HumanoidRootPart"].Position) > 7 and Collection:GetSelfDistance(closestEntity["HumanoidRootPart"].Position) < 500 then
-                    Collection:TeleportCFrame(closestEntity["HumanoidRootPart"].CFrame * CFrame.new(0, 0, -5) *
-                        CFrame.Angles(0, math.rad(180), 0))
+            if LocalPlayer.Character and Dungeon_Header.Visible and (Collection:RaidTitle() or Collection:DefenseTitle()) then
+                local allTitles = Collection:getAllEntities()
+                local closestEntity, allEntities = Collection:getEntities(allTitles)
+                if closestEntity and closestEntity:FindFirstChild("HumanoidRootPart") then
+                    if Collection:GetSelfDistance(closestEntity["HumanoidRootPart"].Position) > 7 and Collection:GetSelfDistance(closestEntity["HumanoidRootPart"].Position) < 500 then
+                        Collection:TeleportCFrame(closestEntity["HumanoidRootPart"].CFrame * CFrame.new(0, 0, -5) *
+                            CFrame.Angles(0, math.rad(180), 0))
+                    end
+                    Collection:attackEntity(tostring(closestEntity))
                 end
-                Collection:attackEntity(tostring(closestEntity))
+                task.wait()
             end
-            task.wait()
         end
     end)
 end
@@ -269,26 +287,29 @@ function Collection:selectAutoFarm()
     if not autofarm then
         return
     end
-    if autofarm then
-        task.spawn(function()
-            while autofarm do
-                if #selectedList > 0 then
-                    local closest = Collection:getEntities(selectedList)
-                    if closest then
-                        if Collection:GetSelfDistance(closest.HumanoidRootPart.Position) > 7 and Collection:GetSelfDistance(closest.HumanoidRootPart.Position) < 3000 then
-                            Collection:TeleportCFrame(
-                                closest.HumanoidRootPart.CFrame
-                                * CFrame.new(0, 0, -5)
-                                * CFrame.Angles(0, math.rad(180), 0)
-                            )
-                        end
-                        Collection:attackEntity(tostring(closest))
+
+    task.spawn(function()
+        while autofarm do
+            if LocalPlayer.Character and #selectedList > 0 then
+                local closest = Collection:getEntities(selectedList)
+
+                if closest and closest:FindFirstChild("HumanoidRootPart") then
+                    local distance = Collection:GetSelfDistance(closest.HumanoidRootPart.Position)
+
+                    if distance > 7 and distance < 3000 then
+                        Collection:TeleportCFrame(
+                            closest.HumanoidRootPart.CFrame
+                            * CFrame.new(0, 0, -5)
+                            * CFrame.Angles(0, math.rad(180), 0)
+                        )
                     end
+
+                    Collection:attackEntity(tostring(closest))
                 end
-                task.wait()
             end
-        end)
-    end
+            task.wait()
+        end
+    end)
 end
 
 function Collection:upgrade_Stats()
@@ -444,7 +465,7 @@ end)
 
 Tabs.General:AddSection("Auto Farm")
 
-local SelectEntityMultiDropdown = Tabs.General:AddDropdown("MultiDropdown", {
+local MultiDropdown = Tabs.General:AddDropdown("MultiDropdown", {
     Title = "Select Entities",
     Values = entitiesName,
     Multi = true,
@@ -452,15 +473,13 @@ local SelectEntityMultiDropdown = Tabs.General:AddDropdown("MultiDropdown", {
     Description = "This Function will attack selected entities automatically"
 })
 
-SelectEntityMultiDropdown:OnChanged(function(select)
+MultiDropdown:OnChanged(function(select)
     selectedList = {}
     for i, v in pairs(select) do
         if v then
             table.insert(selectedList, i)
         end
     end
-    -- autofarm = true
-    -- Collection:selectAutoFarm()
 end)
 
 local function refreshDropdown()
@@ -472,7 +491,7 @@ local function refreshDropdown()
 
 
         local entitiesName = Collection:getAllEntities()
-        SelectEntityMultiDropdown:SetValues(entitiesName)
+        MultiDropdown:SetValues(entitiesName)
 
         refreshEntities = false
     end)
@@ -499,17 +518,7 @@ function Collection:GetEquipBestName()
     return equipBestName
 end
 
-function Collection:GetEquipBestBTN(btnName)
-    local equipBestBTN = {}
-    for _, v in next, UIR:GetChildren() do
-        if v.ClassName == "ImageButton" then
-            table.insert(equipBestBTN, v)
-        end
-    end
-    return equipBestBTN
-end
-
-function Collection:AutoEqiupBest()
+function Collection:AutoEqiupBestAll()
     autoEquipBest = true
     task.spawn(function()
         while autoEquipBest do
@@ -521,21 +530,21 @@ function Collection:AutoEqiupBest()
                     end
                 end
             end
-            task.wait(5)
+            task.wait(tonumber(equipBestAllInterval))
             GuiService.SelectedObject = nil
         end
     end)
 end
 
-local SelectEntityMultiDropdown = Tabs.General:AddDropdown("MultiDropdown", {
+local MultiDropdown = Tabs.General:AddDropdown("MultiDropdown", {
     Title = "Select Equip Best",
     Values = Collection:GetEquipBestName(),
     Multi = true,
     Default = {},
-    Description = "This Function will equip best all selected automatically"
+    Description = "This Function will equip best champions, power, weapon and other by selected automatically"
 })
 
-SelectEntityMultiDropdown:OnChanged(function(select)
+MultiDropdown:OnChanged(function(select)
     selectedEquipBest = {}
     for i, v in pairs(select) do
         if v then
@@ -543,15 +552,22 @@ SelectEntityMultiDropdown:OnChanged(function(select)
         end
     end
 end)
-
+local Slider = Tabs.General:AddSlider("Slider", {
+    Title = "Interval",
+    Description = "Equip Best All Interval",
+    Default = 30,
+    Min = 1,
+    Max = 500,
+    Rounding = 1,
+    Callback = function(Value)
+        equipBestAllInterval = Value
+    end
+})
 local Toggle = Tabs.General:AddToggle("Auto Equip All", { Title = "Auto Equip Best All", Default = false })
 Toggle:OnChanged(function(Toggle)
     autoEquipBestBTN = Toggle
     if autoEquipBestBTN then
-        Collection:AutoEqiupBest()
-        task.wait(.5)
-        autofarm = true
-        Collection:selectAutoFarm()
+        Collection:AutoEqiupBestAll()
     end
 end)
 
@@ -585,13 +601,6 @@ Toggle:OnChanged(function(Toggle)
         end
     end)
 end)
-
-
-
-
-
-
-
 
 -----------------------------------------------------------------------------------------------
 -----------------------------------------Champions Tab-----------------------------------------
@@ -804,15 +813,16 @@ function Collection:joinRaid(raidName)
     end)
 end
 
-local enterRaid = function(raidName)
+function Collection:enterRaid(raidName)
     Collection:joinRaid(raidName)
     inRaid = true
     task.wait(.5)
 end
+
 local exitRaid = function()
     inRaid = false
 end
-local shouldJoinRaid = function(minute, raidName)
+function Collection:shouldJoinRaid(minute, raidName)
     for _, config in ipairs(Raid_Config) do
         if config.name == raidName and
             minute >= config.minuteStart and
@@ -822,7 +832,8 @@ local shouldJoinRaid = function(minute, raidName)
     end
     return false
 end
-local checkAndJoinRaids = function()
+
+function Collection:checkAndJoinRaids()
     if not autoJoinRaidBTN then
         if inRaid and not Dungeon_Header.Visible then
             exitRaid()
@@ -832,21 +843,22 @@ local checkAndJoinRaids = function()
     local currentMinute = tonumber(os.date("%M"))
 
     for _, raidName in ipairs(RaidList) do
-        if shouldJoinRaid(currentMinute, raidName) then
+        if Collection:shouldJoinRaid(currentMinute, raidName) then
             if not inDungeon and not Dungeon_Header.Visible then
-                enterRaid(raidName)
+                Collection:enterRaid(raidName)
                 break
             end
         end
     end
 end
+
 local startAutoRaid = function()
     if autoRaid then return end
 
     autoRaid = true
     task.spawn(function()
         while autoRaid do
-            checkAndJoinRaids()
+            Collection:checkAndJoinRaids()
             task.wait(.5)
         end
     end)
