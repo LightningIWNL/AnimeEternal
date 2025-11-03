@@ -6,7 +6,9 @@ local InterfaceManager = loadstring(game:HttpGet(
     "https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/InterfaceManager.lua"))()
 
 
---Variable
+-------------------------------------------------------------------------------------------
+-----------------------------------------Variable------------------------------------------
+-------------------------------------------------------------------------------------------
 local Collection = {}; Collection.__index = Collection
 local Players = game:GetService("Players")
 local GuiService = game:GetService("GuiService")
@@ -49,6 +51,7 @@ local selectedRoom = 50
 local ExitAtWaveRaid = false
 local ExitAtRoomDungeon = false
 local autoExitDungeon = false
+local joinDungeon = false
 local autoExitRaid = false
 local upgradeStats = false
 local selectedAmountStats = 1
@@ -56,12 +59,14 @@ local selectedStatList = {}
 local refreshEntities = false
 local openChest = false
 local UIR = PlayerGui.Inventory_1.Hub.Equip_All_Top.Main.UI_Ring
-local selectedEquipBest = {}
-local autoEquipBest = false
+local selectedEquipBest = nil
 local autoEquipBestBTN = false
 local equipBestAllInterval = 30
 local disableRender = false
 local blackScreen = false
+local selectedGacha = nil
+local selectedAmountGacha = 1
+local autoGacha = false
 
 -------------------------------------------------------------------------------------------
 -----------------------------------------Function------------------------------------------
@@ -114,7 +119,7 @@ function Collection:DefenseTitle()
     return Dungeon_Header.Visible and txt:find("Defense") ~= nil
 end
 
-for _, Entity in pairs(workspace.Debris.Monsters:GetChildren()) do
+for _, Entity in pairs(Monsters:GetChildren()) do
     local title = Entity:GetAttribute("Title")
     if title and not seen[title] then
         table.insert(entitiesName, title)
@@ -210,11 +215,18 @@ function Collection:getSkillPoints()
 end
 
 function Collection:autoUpRank()
-    To_Server:FireServer({
-        Upgrading_Name = "Rank",
-        Action = "_Upgrades",
-        Upgrade_Name = "Rank_Up"
-    })
+    task.spawn(function()
+        while autoRankUp do
+            if autoRankUp then
+                To_Server:FireServer({
+                    Upgrading_Name = "Rank",
+                    Action = "_Upgrades",
+                    Upgrade_Name = "Rank_Up"
+                })
+            end
+            task.spawn(30)
+        end
+    end)
 end
 
 function Collection:getAllEntities()
@@ -384,9 +396,59 @@ function Collection:ScreenBlack(toggle)
     end)
 end
 
+function Collection:updateEntitiesName()
+    local newEntitiesName = {}
+    local newSeen = {}
+
+    for _, Entity in pairs(Monsters:GetChildren()) do
+        local title = Entity:GetAttribute("Title")
+        if title and not newSeen[title] then
+            table.insert(newEntitiesName, title)
+            newSeen[title] = true
+        end
+    end
+
+    return newEntitiesName
+end
+
+function Collection:compareEntitiesTables(oldTable, newTable)
+    if #oldTable ~= #newTable then
+        return false
+    end
+
+    local oldSet = {}
+    for _, name in pairs(oldTable) do
+        oldSet[name] = true
+    end
+
+    for _, name in pairs(newTable) do
+        if not oldSet[name] then
+            return false
+        end
+    end
+
+    return true
+end
+
 ------------------------------------------------------------------------------------------------
 -----------------------------------------Config Table-------------------------------------------
 ------------------------------------------------------------------------------------------------
+local Handle_Config = {
+    isAutoFarmRunning = false,
+    isAutoFarmDungeonRunning = false,
+    isAutoFarmRaidRunning = false,
+    isEquipBestRunning = false,
+    isRankUpRunning = false,
+    isAntiAFKRunning = false,
+    isOpenStarRunning = false,
+    isGachaRunning = false,
+    isAutoJoinDungeonRunning = false,
+    isAutoJoinRaidRunning = false,
+    isAutoUpgradeStatsRunning = false,
+    isAutoUpgradeStatsRunning = false,
+
+
+}
 
 local DUNGEON_CONFIG = {
     { name = "Dungeon_Easy",      minuteStart = 0,  minuteEnd = 2 },
@@ -394,7 +456,10 @@ local DUNGEON_CONFIG = {
     { name = "Dungeon_Hard",      minuteStart = 20, minuteEnd = 22 },
     { name = "Dungeon_Insane",    minuteStart = 30, minuteEnd = 32 },
     { name = "Dungeon_Crazy",     minuteStart = 40, minuteEnd = 42 },
-    { name = "Dungeon_Nightmare", minuteStart = 50, minuteEnd = 52 }
+    { name = "Dungeon_Nightmare", minuteStart = 50, minuteEnd = 52 },
+    { name = "Dungeon_Suffering", minuteStart = 0,  minuteEnd = 60 },
+    { name = "Kaiju_Dungeon",     minuteStart = 0,  minuteEnd = 60 },
+
 }
 
 local Raid_Config = {
@@ -432,6 +497,15 @@ local StarName = {
     "Star_22", "Star_23", "Star_24", "Star_25",
 }
 
+local GachaName = {
+    "Dragon_Race", "Saiyan_Evolution", "Swords", "Pirate_Crew", "Reiatsu_Color", "Zanpakuto", "Curses", "Demon_Arts",
+    "Solo_Hunter_Rank", "Grimoire", "Power_Eyes",
+    "Psychic_Mayhem", "Damage_Card_Shop", "Energy_Card_Shop", "Families", "Titans", "Sins", "Commandments",
+    "Kaiju_Powers", "Species", "Ultimate_Skills",
+    "Power_Energy_Runes", "Onomatopoeia", "Stands", "Investigators", "Kagune", "Debiru_Hunter", "Akuma_Powers",
+    "Mushi_Bite", "Special_Fire_Force",
+    "Grand_Elder_Power", "Frost_Demon_Evolution"
+}
 --------------------------------------------------------------------------------------------
 -----------------------------------------UI Setup-------------------------------------------
 --------------------------------------------------------------------------------------------
@@ -489,6 +563,7 @@ end)
 local Tabs = {
     General = Window:AddTab({ Title = "General", Icon = "monitor" }),
     Champions = Window:AddTab({ Title = "Champions", Icon = "user" }),
+    Gacha = Window:AddTab({ Title = "Gacha", Icon = "dices" }),
     Dungeon = Window:AddTab({ Title = "Dungeon", Icon = "shield" }),
     Raid = Window:AddTab({ Title = "Raid", Icon = "flame" }),
     Stats = Window:AddTab({ Title = "Stats", Icon = "align-end-horizontal" }),
@@ -531,23 +606,20 @@ MultiDropdown:OnChanged(function(select)
     end
 end)
 
-local function refreshDropdown()
-    if refreshEntities then return end
-    refreshEntities = true
+task.spawn(function()
+    while task.wait(5) do
+        local newEntitiesName = Collection:updateEntitiesName()
 
-    task.spawn(function()
-        task.wait(2.5)
+        -- เปรียบเทียบว่ารายชื่อเปลี่ยนแปลงหรือไม่
+        if not Collection:compareEntitiesTables(entitiesName, newEntitiesName) then
+            entitiesName = newEntitiesName
+            MultiDropdown:SetValues(entitiesName)
 
-
-        local entitiesName = Collection:getAllEntities()
-        MultiDropdown:SetValues(entitiesName)
-
-        refreshEntities = false
-    end)
-end
-refreshDropdown()
-Monsters.ChildAdded:Connect(refreshDropdown)
-Monsters.ChildRemoved:Connect(refreshDropdown)
+            print("Auto-refreshed entities: " .. #entitiesName .. " monsters")
+            print("Updated list:", table.concat(entitiesName, ", "))
+        end
+    end
+end)
 
 local Toggle = Tabs.General:AddToggle("Auto Farm", { Title = "Auto Farm", Default = false })
 Toggle:OnChanged(function(Toggle)
@@ -568,15 +640,12 @@ function Collection:GetEquipBestName()
 end
 
 function Collection:AutoEqiupBestAll()
-    autoEquipBest = true
     task.spawn(function()
-        while autoEquipBest do
-            if #selectedEquipBest > 0 then
-                for _, btnName in pairs(selectedEquipBest) do
-                    local button = UIR:FindFirstChild(btnName)
-                    if autoEquipBestBTN and button and button:IsA("ImageButton") then
-                        Collection:pressButton(button)
-                    end
+        while autoEquipBestBTN do
+            if selectedEquipBest then
+                local button = UIR:FindFirstChild(selectedEquipBest)
+                if button and button:IsA("ImageButton") then
+                    Collection:pressButton(button)
                 end
             end
             task.wait(tonumber(equipBestAllInterval))
@@ -585,21 +654,16 @@ function Collection:AutoEqiupBestAll()
     end)
 end
 
-local MultiDropdown = Tabs.General:AddDropdown("MultiDropdown", {
+local Dropdown = Tabs.General:AddDropdown("MultiDropdown", {
     Title = "Select Equip Best By",
     Values = Collection:GetEquipBestName(),
-    Multi = true,
-    Default = {},
+    Multi = false,
+    Default = nil,
     Description = "This Function will equip best champions, power, weapon and other by selected automatically"
 })
 
-MultiDropdown:OnChanged(function(select)
-    selectedEquipBest = {}
-    for i, v in pairs(select) do
-        if v then
-            table.insert(selectedEquipBest, i)
-        end
-    end
+Dropdown:OnChanged(function(select)
+    selectedEquipBest = select
 end)
 local Slider = Tabs.General:AddSlider("Slider", {
     Title = "Interval",
@@ -626,13 +690,7 @@ Tabs.General:AddSection("Auto Rank Up")
 local Toggle = Tabs.General:AddToggle("MyToggle", { Title = "Auto Rank Up", Default = false })
 Toggle:OnChanged(function(Toggle)
     autoRankUp = Toggle
-    task.spawn(function()
-        while autoRankUp do
-            print("Auto Up Rank")
-            Collection:autoUpRank()
-            task.wait(30)
-        end
-    end)
+    Collection:autoUpRank()
 end)
 
 Tabs.General:AddSection("Anti AFK")
@@ -655,48 +713,35 @@ end)
 -----------------------------------------Champions Tab-----------------------------------------
 -----------------------------------------------------------------------------------------------
 
-local selectedStarList = {}
+local selectedStarList = nil
 local selectedAmount = 5
-local randomStar = false
+local autoOpenStar = false
 
 
-local function openStars(starName, amount)
-    To_Server:FireServer({
-        Open_Amount = amount,
-        Action = "_Stars",
-        Name = starName
-    })
-end
-
-local function RandomChampions()
-    randomStar = true
+function Collection:openStars()
     task.spawn(function()
-        while randomStar do
-            for _, star in ipairs(selectedStarList) do
-                openStars(star, tonumber(selectedAmount))
+        while autoOpenStar do
+            if selectedStarList then
+                To_Server:FireServer({
+                    Open_Amount = tonumber(selectedAmount),
+                    Action = "_Stars",
+                    Name = selectedStarList
+                })
             end
-            task.wait()
+            task.wait(.5)
         end
     end)
 end
 
-
-local MultiDropdown = Tabs.Champions:AddDropdown("MultiDropdown", {
+local Dropdown = Tabs.Champions:AddDropdown("MultiDropdown", {
     Title = "Select Stars",
     Values = StarName,
-    Multi = true,
-    Default = {},
+    Multi = false,
+    Default = nil,
     Description = "This function will open selected star champions automatically"
 })
-MultiDropdown:OnChanged(function(selection)
-    selectedStarList = {}
-
-    for starName, isSelected in pairs(selection) do
-        if isSelected then
-            table.insert(selectedStarList, starName)
-        end
-    end
-    RandomChampions()
+Dropdown:OnChanged(function(selection)
+    selectedStarList = selection
 end)
 local Slider = Tabs.Champions:AddSlider("Slider", {
     Title = "Amount",
@@ -711,6 +756,64 @@ local Slider = Tabs.Champions:AddSlider("Slider", {
 })
 
 
+local Toggle = Tabs.Champions:AddToggle("Open Star", { Title = "Auto Open Star", Default = false })
+
+Toggle:OnChanged(function(Toggle)
+    autoOpenStar = Toggle
+    if autoOpenStar then
+        Collection:openStars()
+    end
+end)
+---------------------------------------------------------------------------------------------
+-----------------------------------------Gacha Tab------------------------------------------
+---------------------------------------------------------------------------------------------
+
+function Collection:OpenGacha()
+    if not autoGacha then
+        return
+    end
+    task.spawn(function()
+        while autoGacha do
+            if selectedGacha then
+                To_Server:FireServer({
+                    Open_Amount = tonumber(selectedAmountGacha),
+                    Action = "_Gacha_Activate",
+                    Name = selectedGacha
+                })
+            end
+            task.wait(.5)
+        end
+    end)
+end
+
+local Dropdown = Tabs.Gacha:AddDropdown("Dropdown", {
+    Title = "Dropdown",
+    Values = GachaName,
+    Multi = false,
+    Default = nil,
+})
+Dropdown:OnChanged(function(select)
+    selectedGacha = select
+end)
+local Slider = Tabs.Gacha:AddSlider("Slider", {
+    Title = "Amount",
+    Description = "Number of gacha to open at once",
+    Default = 5,
+    Min = 1,
+    Max = 30,
+    Rounding = 1,
+    Callback = function(Value)
+        selectedAmountGacha = Value
+    end
+})
+
+local Toggle = Tabs.Gacha:AddToggle("Auto Gacha", { Title = "Auto Gacha", Default = false })
+Toggle:OnChanged(function(Toggle)
+    autoGacha = Toggle
+    if autoGacha then
+        Collection:OpenGacha()
+    end
+end)
 ---------------------------------------------------------------------------------------------
 -----------------------------------------Dungeon Tab-----------------------------------------
 ---------------------------------------------------------------------------------------------
@@ -733,8 +836,19 @@ function Collection:joinDungeon(dungeonName)
     end)
 end
 
+function Collection:JoinedDungeon()
+    joinDungeon = true
+    task.wait(120)
+    joinDungeon = false
+end
+
 function Collection:enterDungeon(dungeonName)
     Dungeon_Notification.Visible = false
+    Collection:joinDungeon(dungeonName)
+    inDungeon = true
+end
+
+function Collection:enterSpecialDungeon(dungeonName)
     Collection:joinDungeon(dungeonName)
     inDungeon = true
 end
@@ -755,22 +869,30 @@ function Collection:shouldJoinDungeon(minute, dungeonName)
 end
 
 function Collection:checkAndJoinDungeons()
-    if not Dungeon_Notification.Visible and not autoJoinDungeonBTN then
-        if inDungeon and not Dungeon_Header.Visible then
-            Collection:exitDungeon()
-        end
+    if not autoJoinDungeonBTN then
         return
     end
 
+    if inDungeon and not Dungeon_Header.Visible then
+        Collection:exitDungeon()
+        return
+    end
 
     local currentMinute = tonumber(os.date("%M"))
-
     for _, dungeonName in ipairs(dungeonList) do
-        if Collection:shouldJoinDungeon(currentMinute, dungeonName) then
+        if Collection:shouldJoinDungeon(currentMinute, dungeonName) and Dungeon_Notification.Visible and not joinDungeon then
             if not inRaid and not Dungeon_Header.Visible then
                 Collection:enterDungeon(dungeonName)
-                break
+                Collection:JoinedDungeon()
+                return
             end
+        end
+    end
+    for _, dungeonName in ipairs(dungeonList) do
+        local specialDungeon = (dungeonName == "Dungeon_Suffering" or dungeonName == "Kaiju_Dungeon")
+        if specialDungeon and not inRaid and not Dungeon_Header.Visible then
+            Collection:enterSpecialDungeon(dungeonName)
+            break
         end
     end
 end
@@ -779,10 +901,11 @@ function Collection:startAutoDungeon()
     if autoDungeon then return end
     autoDungeon = true
     task.spawn(function()
-        while autoDungeon do
+        while autoDungeon and autoJoinDungeonBTN do
             Collection:checkAndJoinDungeons()
             task.wait(.5)
         end
+        autoDungeon = false
     end)
 end
 
@@ -852,7 +975,6 @@ function Collection:getRaidNames()
 end
 
 function Collection:joinRaid(raidName)
-    -- joinRaidIsOn =true
     task.spawn(function()
         To_Server:FireServer({
             Action = "_Enter_Dungeon",
@@ -884,16 +1006,20 @@ end
 
 function Collection:checkAndJoinRaids()
     if not autoJoinRaidBTN then
-        if inRaid and not Dungeon_Header.Visible then
-            exitRaid()
-        end
+        return
+    end
+    if inRaid and not Dungeon_Header.Visible then
+        exitRaid()
+        return
+    end
+    if inDungeon then
         return
     end
     local currentMinute = tonumber(os.date("%M"))
 
     for _, raidName in ipairs(RaidList) do
         if Collection:shouldJoinRaid(currentMinute, raidName) then
-            if not inDungeon and not Dungeon_Header.Visible then
+            if not Dungeon_Header.Visible then
                 Collection:enterRaid(raidName)
                 break
             end
@@ -906,10 +1032,11 @@ local startAutoRaid = function()
 
     autoRaid = true
     task.spawn(function()
-        while autoRaid do
+        while autoRaid and autoJoinRaidBTN do
             Collection:checkAndJoinRaids()
             task.wait(.5)
         end
+        autoRaid = false
     end)
 end
 local MultiDropdown = Tabs.Raid:AddDropdown("MultiDropdown", {
@@ -1051,8 +1178,12 @@ end)
 -----------------------------------------Performance-----------------------------------------
 ---------------------------------------------------------------------------------------------
 local Toggle = Tabs.Performance:AddToggle("Disable Render",
-    { Title = "Disable Render", Default = false, Description =
-    "This function will disable 3D rendering to help improve your performance" })
+    {
+        Title = "Disable Render",
+        Default = false,
+        Description =
+        "This function will disable 3D rendering to help improve your performance"
+    })
 
 Toggle:OnChanged(function(Toggle)
     disableRender = Toggle
